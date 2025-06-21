@@ -58,7 +58,7 @@ export const useAudioRecording = ({
       streamRef.current = stream;
 
       // Initialize Gladia session
-      console.log("Initializing Gladia live session…");
+      // console.log("Initializing Gladia live session…");
 
       const response = await fetch("https://api.gladia.io/v2/live", {
         method: "POST",
@@ -71,9 +71,9 @@ export const useAudioRecording = ({
           sample_rate: 16000,
           bit_depth: 16,
           channels: 1,
-          endpointing: 1,
+          endpointing: 0.05,
           language_config: {
-            languages: sourceLanguage == 'Auto-Detect' ? [] : [sourceLanguage],
+            languages: sourceLanguage == "Auto-Detect" ? [] : [sourceLanguage],
             code_switching: true,
           },
           pre_processing: {
@@ -84,8 +84,6 @@ export const useAudioRecording = ({
             translation_config: {
               target_languages: [targetLanguage],
               context_adaptation: true,
-              // Removed context_mode and context: true
-              // context: "optional context string if needed"
             },
             sentiment_analysis: true,
           },
@@ -136,14 +134,14 @@ export const useAudioRecording = ({
       wsRef.current = ws;
 
       ws.onopen = () => {
-        console.log("Connected to Gladia WebSocket");
+        // console.log("Connected to Gladia WebSocket");
         setIsConnected(true);
       };
 
       ws.onmessage = (event) => {
         try {
           const message = JSON.parse(event.data);
-          console.log("Received message:", message);
+          // console.log("Received message:", message);
 
           if (message.type === "transcript" && message.data?.is_final) {
             const text = message.data.utterance?.text;
@@ -167,10 +165,10 @@ export const useAudioRecording = ({
       };
 
       ws.onclose = (event) => {
-        console.log("WebSocket connection closed", {
-          code: event.code,
-          reason: event.reason,
-        });
+        // console.log("WebSocket connection closed", {
+        //   code: event.code,
+        //   reason: event.reason,
+        // });
         setIsConnected(false);
 
         // If the connection closed unexpectedly, set an error
