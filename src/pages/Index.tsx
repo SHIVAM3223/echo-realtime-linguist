@@ -1,7 +1,7 @@
-import React, { useState, useRef, useEffect } from "react";
+import React, { useState, useRef, useEffect, useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import { Settings, Mic, MicOff, Play, Volume2 } from "lucide-react";
+import { Settings, Mic, MicOff, Volume2 } from "lucide-react";
 import LanguageSelector from "@/components/LanguageSelector";
 import AudioVisualizer from "@/components/AudioVisualizer";
 import TranscriptionDisplay from "@/components/TranscriptionDisplay";
@@ -19,33 +19,31 @@ const Index = () => {
   const [isRecording, setIsRecording] = useState(false);
   const [audioLevel, setAudioLevel] = useState(0);
 
+  // Ref to keep track of the text that has already been spoken
+  const lastSpokenTranslatedTextRef = useRef("");
+  // Timer for debouncing TTS to wait for sentence completion
+  const ttsDebounceTimerRef = useRef(null);
+
   const {
     startRecording,
     stopRecording,
     isConnected,
-    transcription, // This `transcription` from the hook might already be cumulative.
-    // We'll primarily focus on how `onTranscription` updates `sourceText`.
     error: audioError,
   } = useAudioRecording({
-    // MODIFICATION START: Update onTranscription to append
     onTranscription: (newTextChunk) => {
       setSourceText((prevText) => {
-        if (
+        // This logic ensures proper spacing between chunks
+        // Check if prevText ends with a punctuation or space, or if newTextChunk starts with space
+        const needsSpace =
           prevText.length > 0 &&
           newTextChunk.length > 0 &&
           !prevText.endsWith(" ") &&
           !newTextChunk.startsWith(" ") &&
-          !prevText.endsWith(".") &&
-          !prevText.endsWith("?") &&
-          !prevText.endsWith("!")
-        ) {
-          return prevText + " " + newTextChunk;
-        }
-        return prevText + newTextChunk;
+          !/[.?!]$/.test(prevText.trim()); // Also add space if previous doesn't end with punctuation
+
+        return prevText + (needsSpace ? " " : "") + newTextChunk;
       });
     },
-    // MODIFICATION END
-
     sourceLanguage,
     targetLanguage,
   });
@@ -73,33 +71,109 @@ const Index = () => {
       };
       translateAsync();
     } else {
-      // Clear translated text if source text becomes empty (e.g., after a new recording starts)
       setTranslatedText("");
     }
   }, [sourceText, sourceLanguage, targetLanguage, translateText]);
 
-  const handleRecordingToggle = async () => {
+  // Effect to manage Text-to-Speech playback
+  useEffect(() => {
+    // Clear any existing debounce timer
+    if (ttsDebounceTimerRef.current) {
+      clearTimeout(ttsDebounceTimerRef.current);
+    }
+
+    // Don't speak if there's no translated text or if already speaking
+    if (!translatedText.trim() || isSpeaking) {
+      return;
+    }
+
+    // Extract the new, unspoken portion of the translated text
+    const newTranslatedPortion = translatedText
+      .substring(lastSpokenTranslatedTextRef.current.length)
+      .trim();
+
+    if (!newTranslatedPortion) {
+      // Nothing new to speak
+      return;
+    }
+
+    // Heuristic for sentence completion: ends with punctuation or a significant pause indicator.
+    // This is the most challenging part for real-time.
+    const endsWithPunctuation = /[.?!]$/.test(newTranslatedPortion);
+    const endsWithNaturalPause = /[.,;!?]$/.test(newTranslatedPortion); // Consider commas, semicolons as natural pauses too
+
+    // If a sentence is complete, speak it immediately
+    if (endsWithPunctuation) {
+      speak(newTranslatedPortion, targetLanguage);
+      lastSpokenTranslatedTextRef.current = translatedText; // Update reference for spoken text
+    } else if (isRecording) {
+      // If still recording, and no punctuation,
+      // set a debounce to speak if there's a pause in new content.
+      // Adjust this delay (e.g., 500ms to 1000ms) based on desired responsiveness vs. completeness.
+      ttsDebounceTimerRef.current = setTimeout(() => {
+        if (
+          !isSpeaking &&
+          translatedText
+            .substring(lastSpokenTranslatedTextRef.current.length)
+            .trim() === newTranslatedPortion
+        ) {
+          // Speak the current new portion if no new updates arrived during debounce
+          speak(newTranslatedPortion, targetLanguage);
+          lastSpokenTranslatedTextRef.current = translatedText;
+        }
+      }, 700); // Wait 700ms for more content or a punctuation mark
+    } else if (!isRecording && newTranslatedPortion) {
+      // If recording has stopped, speak any remaining new portion immediately
+      speak(newTranslatedPortion, targetLanguage);
+      lastSpokenTranslatedTextRef.current = translatedText;
+    }
+
+    // Cleanup function for useEffect
+    return () => {
+      if (ttsDebounceTimerRef.current) {
+        clearTimeout(ttsDebounceTimerRef.current);
+      }
+    };
+  }, [translatedText, isSpeaking, isRecording, speak, targetLanguage]);
+
+  // When recording stops, ensure any remaining translated text is spoken
+  const handleRecordingToggle = useCallback(async () => {
     if (isRecording) {
       await stopRecording();
       setIsRecording(false);
+      // On stop, clear the debounce and immediately speak any remaining text
+      if (ttsDebounceTimerRef.current) {
+        clearTimeout(ttsDebounceTimerRef.current);
+      }
+      const remainingText = translatedText
+        .substring(lastSpokenTranslatedTextRef.current.length)
+        .trim();
+      if (remainingText && !isSpeaking) {
+        speak(remainingText, targetLanguage);
+        lastSpokenTranslatedTextRef.current = translatedText;
+      }
     } else {
-      // MODIFICATION START: Clear previous text when starting a new recording
       setSourceText("");
       setTranslatedText("");
-      // MODIFICATION END
-
+      lastSpokenTranslatedTextRef.current = ""; // Reset spoken text for new recording
+      if (ttsDebounceTimerRef.current) {
+        clearTimeout(ttsDebounceTimerRef.current);
+      }
       const success = await startRecording();
       if (success) {
         setIsRecording(true);
       }
     }
-  };
-
-  const handleSpeakTranslation = () => {
-    if (translatedText) {
-      speak(translatedText, targetLanguage);
-    }
-  };
+  }, [
+    isRecording,
+    stopRecording,
+    translatedText,
+    lastSpokenTranslatedTextRef,
+    isSpeaking,
+    speak,
+    targetLanguage,
+    startRecording,
+  ]);
 
   const hasApiKeys = () => {
     const gladiaKey = localStorage.getItem("gladia_api_key");
@@ -110,7 +184,7 @@ const Index = () => {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 to-blue-50">
-      {/* Header (no changes) */}
+      {/* Header */}
       <header className="bg-white shadow-sm border-b border-slate-200">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between items-center h-16">
@@ -135,7 +209,7 @@ const Index = () => {
         </div>
       </header>
 
-      {/* Main Content (no changes to structure, only data flow) */}
+      {/* Main Content */}
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         {!hasApiKeys() && (
           <Card className="p-6 mb-8 bg-amber-50 border-amber-200">
@@ -243,20 +317,7 @@ const Index = () => {
                 />
               </div>
 
-              {/* Translation Controls */}
               <div className="flex items-center space-x-4 mb-6">
-                <Button
-                  onClick={handleSpeakTranslation}
-                  disabled={!translatedText || isSpeaking}
-                  variant="outline"
-                  className="flex items-center space-x-2"
-                >
-                  <Play className="w-4 h-4" />
-                  <span>
-                    {isSpeaking ? "Speaking..." : "Speak Translation"}
-                  </span>
-                </Button>
-
                 <div className="flex items-center space-x-2 text-sm text-slate-600">
                   <div
                     className={`w-2 h-2 rounded-full ${
