@@ -1,22 +1,21 @@
-
-import React, { useState, useRef, useEffect } from 'react';
-import { Button } from '@/components/ui/button';
-import { Card } from '@/components/ui/card';
-import { Settings, Mic, MicOff, Play, Volume2 } from 'lucide-react';
-import LanguageSelector from '@/components/LanguageSelector';
-import AudioVisualizer from '@/components/AudioVisualizer';
-import TranscriptionDisplay from '@/components/TranscriptionDisplay';
-import SettingsModal from '@/components/SettingsModal';
-import { useAudioRecording } from '@/hooks/useAudioRecording';
-import { useTranslation } from '@/hooks/useTranslation';
-import { useTextToSpeech } from '@/hooks/useTextToSpeech';
+import React, { useState, useRef, useEffect } from "react";
+import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
+import { Settings, Mic, MicOff, Play, Volume2 } from "lucide-react";
+import LanguageSelector from "@/components/LanguageSelector";
+import AudioVisualizer from "@/components/AudioVisualizer";
+import TranscriptionDisplay from "@/components/TranscriptionDisplay";
+import SettingsModal from "@/components/SettingsModal";
+import { useAudioRecording } from "@/hooks/useAudioRecording";
+import { useTranslation } from "@/hooks/useTranslation";
+import { useTextToSpeech } from "@/hooks/useTextToSpeech";
 
 const Index = () => {
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
-  const [sourceLanguage, setSourceLanguage] = useState('en');
-  const [targetLanguage, setTargetLanguage] = useState('es');
-  const [sourceText, setSourceText] = useState('');
-  const [translatedText, setTranslatedText] = useState('');
+  const [sourceLanguage, setSourceLanguage] = useState("en");
+  const [targetLanguage, setTargetLanguage] = useState("es");
+  const [sourceText, setSourceText] = useState("");
+  const [translatedText, setTranslatedText] = useState("");
   const [isRecording, setIsRecording] = useState(false);
   const [audioLevel, setAudioLevel] = useState(0);
 
@@ -24,36 +23,58 @@ const Index = () => {
     startRecording,
     stopRecording,
     isConnected,
-    transcription,
-    error: audioError
+    transcription, // This `transcription` from the hook might already be cumulative.
+    // We'll primarily focus on how `onTranscription` updates `sourceText`.
+    error: audioError,
   } = useAudioRecording({
-    onTranscription: (text) => {
-      setSourceText(text);
-    }
+    // MODIFICATION START: Update onTranscription to append
+    onTranscription: (newTextChunk) => {
+      setSourceText((prevText) => {
+        if (
+          prevText.length > 0 &&
+          newTextChunk.length > 0 &&
+          !prevText.endsWith(" ") &&
+          !newTextChunk.startsWith(" ") &&
+          !prevText.endsWith(".") &&
+          !prevText.endsWith("?") &&
+          !prevText.endsWith("!")
+        ) {
+          return prevText + " " + newTextChunk;
+        }
+        return prevText + newTextChunk;
+      });
+    },
+    // MODIFICATION END
+
+    sourceLanguage,
+    targetLanguage,
   });
 
   const {
     translateText,
     isTranslating,
-    error: translationError
+    error: translationError,
   } = useTranslation();
 
-  const {
-    speak,
-    isSpeaking,
-    error: ttsError
-  } = useTextToSpeech();
+  const { speak, isSpeaking, error: ttsError } = useTextToSpeech();
 
   // Auto-translate when source text changes
   useEffect(() => {
     if (sourceText && sourceText.trim().length > 0) {
       const translateAsync = async () => {
-        const translated = await translateText(sourceText, sourceLanguage, targetLanguage);
+        const translated = await translateText(
+          sourceText,
+          sourceLanguage,
+          targetLanguage
+        );
         if (translated) {
           setTranslatedText(translated);
         }
       };
       translateAsync();
+    } else {
+      // Clear translated text if source text becomes empty (e.g., after a new recording starts)
+      setTranslatedText("");
     }
   }, [sourceText, sourceLanguage, targetLanguage, translateText]);
 
@@ -62,6 +83,11 @@ const Index = () => {
       await stopRecording();
       setIsRecording(false);
     } else {
+      // MODIFICATION START: Clear previous text when starting a new recording
+      setSourceText("");
+      setTranslatedText("");
+      // MODIFICATION END
+
       const success = await startRecording();
       if (success) {
         setIsRecording(true);
@@ -76,15 +102,15 @@ const Index = () => {
   };
 
   const hasApiKeys = () => {
-    const gladiaKey = localStorage.getItem('gladia_api_key');
-    const azureKey = localStorage.getItem('azure_api_key');
-    const elevenlabsKey = localStorage.getItem('elevenlabs_api_key');
+    const gladiaKey = localStorage.getItem("gladia_api_key");
+    const azureKey = localStorage.getItem("azure_api_key");
+    const elevenlabsKey = localStorage.getItem("elevenlabs_api_key");
     return gladiaKey && azureKey && elevenlabsKey;
   };
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 to-blue-50">
-      {/* Header */}
+      {/* Header (no changes) */}
       <header className="bg-white shadow-sm border-b border-slate-200">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between items-center h-16">
@@ -109,7 +135,7 @@ const Index = () => {
         </div>
       </header>
 
-      {/* Main Content */}
+      {/* Main Content (no changes to structure, only data flow) */}
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         {!hasApiKeys() && (
           <Card className="p-6 mb-8 bg-amber-50 border-amber-200">
@@ -120,7 +146,8 @@ const Index = () => {
                   Configuration Required
                 </h3>
                 <p className="text-sm text-amber-700 mt-1">
-                  Please configure your API keys in the settings to use the translator.
+                  Please configure your API keys in the settings to use the
+                  translator.
                 </p>
               </div>
             </div>
@@ -139,6 +166,7 @@ const Index = () => {
                   value={sourceLanguage}
                   onChange={setSourceLanguage}
                   label="From"
+                  allowAutoDetect={true}
                 />
               </div>
 
@@ -149,8 +177,8 @@ const Index = () => {
                   disabled={!hasApiKeys()}
                   className={`flex items-center space-x-2 px-6 py-3 ${
                     isRecording
-                      ? 'bg-red-600 hover:bg-red-700'
-                      : 'bg-blue-600 hover:bg-blue-700'
+                      ? "bg-red-600 hover:bg-red-700"
+                      : "bg-blue-600 hover:bg-blue-700"
                   }`}
                 >
                   {isRecording ? (
@@ -167,10 +195,12 @@ const Index = () => {
                 </Button>
 
                 <div className="flex items-center space-x-2 text-sm text-slate-600">
-                  <div className={`w-2 h-2 rounded-full ${
-                    isConnected ? 'bg-green-500' : 'bg-red-500'
-                  }`} />
-                  <span>{isConnected ? 'Connected' : 'Disconnected'}</span>
+                  <div
+                    className={`w-2 h-2 rounded-full ${
+                      isConnected ? "bg-green-500" : "bg-red-500"
+                    }`}
+                  />
+                  <span>{isConnected ? "Connected" : "Disconnected"}</span>
                 </div>
               </div>
 
@@ -222,14 +252,20 @@ const Index = () => {
                   className="flex items-center space-x-2"
                 >
                   <Play className="w-4 h-4" />
-                  <span>{isSpeaking ? 'Speaking...' : 'Speak Translation'}</span>
+                  <span>
+                    {isSpeaking ? "Speaking..." : "Speak Translation"}
+                  </span>
                 </Button>
 
                 <div className="flex items-center space-x-2 text-sm text-slate-600">
-                  <div className={`w-2 h-2 rounded-full ${
-                    isTranslating ? 'bg-blue-500 animate-pulse' : 'bg-slate-300'
-                  }`} />
-                  <span>{isTranslating ? 'Translating...' : 'Ready'}</span>
+                  <div
+                    className={`w-2 h-2 rounded-full ${
+                      isTranslating
+                        ? "bg-blue-500 animate-pulse"
+                        : "bg-slate-300"
+                    }`}
+                  />
+                  <span>{isTranslating ? "Translating..." : "Ready"}</span>
                 </div>
               </div>
 

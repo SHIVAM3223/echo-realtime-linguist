@@ -23,14 +23,17 @@ export const useTranslation = (): UseTranslationReturn => {
 
     try {
       const azureKey = localStorage.getItem('azure_api_key');
-      const azureRegion = localStorage.getItem('azure_region') || 'eastus';
+      const azureRegion = localStorage.getItem('azure_region') || 'central india';
 
       if (!azureKey) {
         setError('Azure API key not configured');
         return null;
       }
 
-      const endpoint = `https://api.cognitive.microsofttranslator.com/translate?api-version=3.0&from=${sourceLanguage}&to=${targetLanguage}`;
+      const endpoint =
+        sourceLanguage == "Auto-Detect"
+          ? `https://api.cognitive.microsofttranslator.com/translate?api-version=3.0&to=${targetLanguage}`
+          : `https://api.cognitive.microsofttranslator.com/translate?api-version=3.0&from=${sourceLanguage}&to=${targetLanguage}`;
 
       const response = await fetch(endpoint, {
         method: 'POST',
