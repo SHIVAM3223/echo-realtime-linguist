@@ -58,7 +58,7 @@ const LanguageSelector = ({
 
   // Create a new array including 'Auto-Detect' if allowed
   const displayLanguages = allowAutoDetect
-    ? [{ code: "auto", name: "Auto-Detect" }, ...LANGUAGES]
+    ? [{ code: "Auto-Detect", name: "Auto-Detect" }, ...LANGUAGES]
     : LANGUAGES;
 
   return (
@@ -67,7 +67,7 @@ const LanguageSelector = ({
       <Select value={value} onValueChange={onChange}>
         <SelectTrigger className="w-48">
           <SelectValue>
-            {value === "auto" && allowAutoDetect
+            {value === "Auto-Detect" && allowAutoDetect
               ? "Auto-Detect"
               : selectedLanguage
               ? selectedLanguage.name
