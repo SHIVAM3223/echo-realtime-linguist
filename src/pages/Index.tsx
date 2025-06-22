@@ -12,7 +12,7 @@ import { useTextToSpeech } from "@/hooks/useTextToSpeech";
 
 const Index = () => {
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
-  const [sourceLanguage, setSourceLanguage] = useState("en");
+  const [sourceLanguage, setSourceLanguage] = useState("Auto-Detect");
   const [targetLanguage, setTargetLanguage] = useState("es");
   const [sourceText, setSourceText] = useState("");
   const [translatedText, setTranslatedText] = useState("");
